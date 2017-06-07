@@ -1,8 +1,8 @@
-package astlib
+package swivel
 
 trait ASTValue {
   type RootValue >: this.type
-  type RootZipper <: astlib.Zipper
+  type RootZipper <: swivel.Zipper
   type Zipper <: RootZipper
 
   def toZipper(parent: Option[RootZipper]): Zipper
@@ -19,7 +19,7 @@ trait Zipper {
   }
   type Value <: MatchingASTValue
   type RootValue >: Value <: MatchingASTValue
-  type RootZipper >: zipper.type <: astlib.Zipper {
+  type RootZipper >: zipper.type <: swivel.Zipper {
     type RootValue = zipper.RootValue
     type RootZipper = zipper.RootZipper
   }
@@ -55,7 +55,7 @@ trait ZipperReplaceable extends Zipper {
   }
   type Value <: MatchingASTValue
   type RootValue >: Value <: MatchingASTValue
-  type RootZipper >: zipper.type <: astlib.Zipper {
+  type RootZipper >: zipper.type <: swivel.Zipper {
     type RootValue = zipper.RootValue
     type RootZipper = zipper.RootZipper
   }

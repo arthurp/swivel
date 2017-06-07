@@ -1,4 +1,4 @@
-package astlib
+package swivel
 
 import scala.annotation.Annotation
 import scala.annotation.StaticAnnotation
