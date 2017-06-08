@@ -1,6 +1,6 @@
 package swivel
 
-trait ASTValue {
+trait SwivelValue {
   type RootValue >: this.type
   type RootZipper <: swivel.Zipper
   type Zipper <: RootZipper
@@ -13,12 +13,12 @@ trait ASTValue {
 
 trait Zipper {
   zipper =>
-  type MatchingASTValue = ASTValue {
+  type MatchingValue = SwivelValue {
     type RootZipper = zipper.RootZipper
     type Zipper <: RootZipper
   }
-  type Value <: MatchingASTValue
-  type RootValue >: Value <: MatchingASTValue
+  type Value <: MatchingValue
+  type RootValue >: Value <: MatchingValue
   type RootZipper >: zipper.type <: swivel.Zipper {
     type RootValue = zipper.RootValue
     type RootZipper = zipper.RootZipper
@@ -49,12 +49,12 @@ trait ZipperReplaceable extends Zipper {
   zipper =>
     
   // TODO: For some reason I need to redeclare all the types here to get replace to typecheck. No idea why.
-  override type MatchingASTValue = ASTValue {
+  override type MatchingValue = SwivelValue {
     type RootZipper = zipper.RootZipper
     type Zipper <: RootZipper
   }
-  type Value <: MatchingASTValue
-  type RootValue >: Value <: MatchingASTValue
+  type Value <: MatchingValue
+  type RootValue >: Value <: MatchingValue
   type RootZipper >: zipper.type <: swivel.Zipper {
     type RootValue = zipper.RootValue
     type RootZipper = zipper.RootZipper
