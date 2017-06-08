@@ -3,40 +3,55 @@ package swivel
 trait SwivelValue {
   type RootValue >: this.type
   type RootZipper <: swivel.Zipper
+  type RootZipperParent <: swivel.ZipperParent
   type Zipper <: RootZipper
 
-  def toZipper(parent: Option[RootZipper]): Zipper
+  def toZipper(parent: Option[RootZipperParent]): Zipper
   def toZipper(): Zipper = toZipper(None)
 
   def subtrees: Seq[RootValue]
 }
 
-trait Zipper {
+trait ZipperBase {
   zipper =>
-  type MatchingValue = SwivelValue {
+  type Value <: SwivelValue {
     type RootZipper = zipper.RootZipper
     type Zipper <: RootZipper
   }
-  type Value <: MatchingValue
-  type RootValue >: Value <: MatchingValue
+  type RootValue >: Value <: SwivelValue {
+    type RootZipper = zipper.RootZipper
+    type Zipper <: RootZipper
+  }
+  type RootZipper <: swivel.Zipper {
+    type RootValue = zipper.RootValue
+    type RootZipper = zipper.RootZipper
+    type RootZipperParent = zipper.RootZipperParent
+  }
+  type RootZipperParent <: swivel.ZipperParent {
+    type RootValue = zipper.RootValue
+    type RootZipper = zipper.RootZipper
+    type RootZipperParent = zipper.RootZipperParent
+  }
+  
+  protected val _parent: Option[RootZipperParent]
+  protected[this] def parentString: String = _parent.map(p => s"<in ${p.toString()}>").getOrElse("<root>")
+}
+
+trait Zipper extends ZipperBase {
+  zipper =>
   type RootZipper >: zipper.type <: swivel.Zipper {
     type RootValue = zipper.RootValue
     type RootZipper = zipper.RootZipper
+    type RootZipperParent = zipper.RootZipperParent
   }
-
-  protected val _parent: Option[RootZipper]
-  def put(v: RootValue): RootZipper
 
   def value: Value
   def parent: Option[RootZipper] = _parent map { p =>
-    p.put(value)
+    p.swivel_put(value)
   }
   def root: RootZipper = parent.map(_.root).getOrElse(this)
 
   def subtrees: Seq[RootZipper]
-
-  protected[this] def parentString: String = _parent.map(p => s"<in ${p.toStringAsParent()}>").getOrElse("<root>")
-  protected def toStringAsParent(): String
 
   /*
   def right: Option[RootZipper]
@@ -45,22 +60,35 @@ trait Zipper {
   */
 }
 
+trait ZipperParent extends ZipperBase {
+  zipper =>
+  type RootZipperParent >: zipper.type <: swivel.ZipperParent {
+    type RootValue = zipper.RootValue
+    type RootZipper = zipper.RootZipper
+    type RootZipperParent = zipper.RootZipperParent
+  }
+  
+  def swivel_put(v: RootValue): RootZipper
+  def swivel_checkChild(v: RootValue): Unit
+}
+
 trait ZipperReplaceable extends Zipper {
   zipper =>
-    
-  // TODO: For some reason I need to redeclare all the types here to get replace to typecheck. No idea why.
-  override type MatchingValue = SwivelValue {
+  type RootValue >: Value <: SwivelValue {
     type RootZipper = zipper.RootZipper
     type Zipper <: RootZipper
   }
-  type Value <: MatchingValue
-  type RootValue >: Value <: MatchingValue
-  type RootZipper >: zipper.type <: swivel.Zipper {
-    type RootValue = zipper.RootValue
+    
+  type ReplacementValue >: Value {
     type RootZipper = zipper.RootZipper
+    type RootZipperParent = zipper.RootZipperParent
+  } <: RootValue {
+    type RootZipper = zipper.RootZipper
+    type RootZipperParent = zipper.RootZipperParent
   }
 
-  type ReplacementValue >: Value <: RootValue
-
-  def replace(a: ReplacementValue): a.Zipper = a.toZipper(_parent.map(_.put(a)))
+  def replace(a: ReplacementValue): a.Zipper = {
+    _parent.foreach(_.swivel_checkChild(a))
+    a.toZipper(_parent)
+  }
 }

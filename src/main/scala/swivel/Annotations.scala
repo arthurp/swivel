@@ -38,10 +38,12 @@ final class leaf extends Annotation with StaticAnnotation {
 // TODO: @compileTimeOnly("Swivel requires macro paradise")
 final class replacement[ReplacementValue] extends Annotation with StaticAnnotation
 
-/** Mark a class parameter that should not be included in the zipper and instead be treated as a simple value.
-  *
-  * This annotation overrides the type-based default.
+/** Mark a class parameter as a child of this node in the tree.
+ *  
+ *  Children appear as zipper values and can be traversed and extracted.
+ *  Non-children are treated as primitive values and are simply passed through without any zipper handling.
+ *  This applies to both unapply and accessors.
   */
 // TODO: @compileTimeOnly("Swivel requires macro paradise")
 @param
-final class notChild extends Annotation with StaticAnnotation
+final class child extends Annotation with StaticAnnotation

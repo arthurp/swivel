@@ -10,7 +10,7 @@ package swivel
  * boundvar := x_1 ...
  * unboundvar := ub_1 ...
  */
-
+/*
 object ArithManual {
 
   // Main
@@ -212,3 +212,4 @@ object ArithManual {
     println(z.subtrees.view.force)
   }
 }
+*/
