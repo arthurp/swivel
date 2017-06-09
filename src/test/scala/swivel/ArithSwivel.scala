@@ -19,15 +19,15 @@ object ArithSwivel {
   //object Formula
 
   @leaf
-  final case class Add(@child l: Formula, @child r: Formula) extends Formula
-  //@leaf
-  //final case class Mul(factors: Seq[Formula]) extends Formula
+  final case class Add(@subtree l: Formula, @subtree r: Formula) extends Formula
   @leaf
-  final case class Negate(@child e: Argument) extends Formula {
+  final case class Mul(@subtree factors: Seq[Formula]) extends Formula
+  @leaf
+  final case class Negate(@subtree e: Argument) extends Formula {
     override def toString() = s"-$e"
   }
   @leaf
-  final case class Let(x: BoundVar, @child expr: Formula, @child body: Formula) extends Formula
+  final case class Let(x: BoundVar, @subtree expr: Formula, @subtree body: Formula) extends Formula
 
   @branch
   sealed abstract class Argument extends Formula
@@ -36,41 +36,44 @@ object ArithSwivel {
     override def toString() = s"$n"
   }
   @leaf
-  final case class BoundVar(name: String) extends Argument {
-    override def toString() = name
-    
+  final class BoundVar(val name: String) extends Argument {
+    override def toString() = s"$name#${hashCode()}"
   }
 }
  
 object ArithSwivelTest {
   import ArithSwivel._
   def main(args: Array[String]) = {
-    def f = Let(BoundVar("b"), Add(Constant(1), Negate(BoundVar("a"))), BoundVar("b"))
-    val z = f.toZipper()
-    val LetZ(x, AddZ(_, NegateZ(v)), b) = z
+    {
+      val b = new BoundVar("b")
+      val f = Let(b, Add(Constant(1), Negate(new BoundVar("v"))), b)
+      val z = f.toZipper()
+      val LetZ(x, AddZ(_, NegateZ(v)), b1) = z
+      
+      println(f)
+      println(z)
+      println(v)
+      println(v.replace(Constant(20)))
+      println(v.replace(Constant(20)).root)
+      
+      println(x)
+      println(b1)
+      println((b, b.toZipper(), b.toZipper().value))
+    }   
     
-    println(f)
-    println(z)
-    println(v)
-    
-    println(x)
-    println(b)
-   
-    
-    /*
-    val f = Mul(Seq(Add(Constant(1), Negate(BoundVar("a"))), Constant(5)))
-    val z: MulZ = f.toZipper(None)
+    val f = Mul(Seq(Add(Constant(1), Negate(new BoundVar("a"))), Constant(5)))
+    val z: MulZ = f.toZipper()
     println(z.factors(0))
     println(z.factors(1))
-    println(z.factors(0).replace(BoundVar("test")): BoundVarZ)
-    println(z.factors(1).replace(BoundVar("test")).parent.map(_.value))
-    println(z.factors.map(_.replace(BoundVar("test")).root.value).view.force)
-    println(z.factors.map(_.replace(BoundVar("test"))).view.force)
+    println(z.factors(0).replace(new BoundVar("test")): BoundVarZ)
+    println(z.factors(1).replace(new BoundVar("test")).parent.map(_.value))
+    println(z.factors.map(_.replace(new BoundVar("test")).root.value).view.force)
+    println(z.factors.map(_.replace(new BoundVar("test"))).view.force)
     //println(z.factors.map(_ => BoundVar("test")))
     //println(z.copy(factors = z.factors.map(_ => BoundVar("test"))))
     //println(z.copy(factors = z.factors.map(_ => BoundVar("test")).view.force))
-    println(z.copy(factors = z.factors.map(v => v.replace(BoundVar("test")).value).view.force).root.value)
-    val _: Mul = z.copy(factors = z.factors.map(v => v.replace(BoundVar("test")).value).view.force).value
+    println(z.copy(factors = z.factors.map(v => v.replace(new BoundVar("test")).value).view.force).root.value)
+    val _: Mul = z.copy(factors = z.factors.map(v => v.replace(new BoundVar("test")).value).view.force).value
 
     val AddZ(_, NegateZ(v)) = z.factors(0)
     println(v)
@@ -82,7 +85,6 @@ object ArithSwivelTest {
 
     println(f.subtrees)
     println(z.subtrees.view.force)
-    */
   }
 }
 

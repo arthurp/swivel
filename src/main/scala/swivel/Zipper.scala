@@ -33,8 +33,8 @@ trait ZipperBase {
     type RootZipperParent = zipper.RootZipperParent
   }
   
-  protected val _parent: Option[RootZipperParent]
-  protected[this] def parentString: String = _parent.map(p => s"<in ${p.toString()}>").getOrElse("<root>")
+  protected val swivel_parent: Option[RootZipperParent]
+  protected[this] def swivel_parentString: String = swivel_parent.map(p => s"<in ${p.toString()}>").getOrElse("<root>")
 }
 
 trait Zipper extends ZipperBase {
@@ -45,13 +45,24 @@ trait Zipper extends ZipperBase {
     type RootZipperParent = zipper.RootZipperParent
   }
 
-  def value: Value
-  def parent: Option[RootZipper] = _parent map { p =>
+  val value: Value
+  
+  def parent: Option[RootZipper] = swivel_parent map { p =>
     p.swivel_put(value)
   }
   def root: RootZipper = parent.map(_.root).getOrElse(this)
 
   def subtrees: Seq[RootZipper]
+  
+  override def toString(): String = value.toString() + swivel_parentString
+  
+  override def hashCode(): Int = value.hashCode() + swivel_parent.hashCode() * 11
+  override def equals(o: Any): Boolean = o match {
+    case z: Zipper =>
+      z.value == value && z.parent == parent
+    case _ =>
+      false
+  }
 
   /*
   def right: Option[RootZipper]
@@ -69,7 +80,7 @@ trait ZipperParent extends ZipperBase {
   }
   
   def swivel_put(v: RootValue): RootZipper
-  def swivel_checkChild(v: RootValue): Unit
+  protected[swivel] def swivel_checkSubtree(v: RootValue): Unit
 }
 
 trait ZipperReplaceable extends Zipper {
@@ -88,7 +99,7 @@ trait ZipperReplaceable extends Zipper {
   }
 
   def replace(a: ReplacementValue): a.Zipper = {
-    _parent.foreach(_.swivel_checkChild(a))
-    a.toZipper(_parent)
+    swivel_parent.foreach(_.swivel_checkSubtree(a))
+    a.toZipper(swivel_parent)
   }
 }

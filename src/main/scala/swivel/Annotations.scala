@@ -46,4 +46,4 @@ final class replacement[ReplacementValue] extends Annotation with StaticAnnotati
   */
 // TODO: @compileTimeOnly("Swivel requires macro paradise")
 @param
-final class child extends Annotation with StaticAnnotation
+final class subtree extends Annotation with StaticAnnotation
