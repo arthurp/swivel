@@ -16,18 +16,22 @@ object ArithSwivel {
   @root
   sealed abstract class Formula
 
-  //object Formula
+  object Formula {
+    println("test")
+  }
 
   @leaf
   final case class Add(@subtree l: Formula, @subtree r: Formula) extends Formula
   @leaf
   final case class Mul(@subtree factors: Seq[Formula]) extends Formula
   @leaf
+  final case class Obj(@subtree fields: Map[Symbol, Argument]) extends Formula
+  @leaf
   final case class Negate(@subtree e: Argument) extends Formula {
     override def toString() = s"-$e"
   }
   @leaf
-  final case class Let(x: BoundVar, @subtree expr: Formula, @subtree body: Formula) extends Formula
+  final case class Let(x: BoundVar, @subtree expr: Option[Formula], @subtree body: Formula) extends Formula
 
   @branch
   sealed abstract class Argument extends Formula
@@ -38,6 +42,7 @@ object ArithSwivel {
   @leaf
   final class BoundVar(val name: String) extends Argument {
     override def toString() = s"$name#${hashCode()}"
+    def copy(name: String) = new BoundVar(name) 
   }
 }
  
@@ -46,9 +51,9 @@ object ArithSwivelTest {
   def main(args: Array[String]) = {
     {
       val b = new BoundVar("b")
-      val f = Let(b, Add(Constant(1), Negate(new BoundVar("v"))), b)
+      val f = Let(b, Some(Add(Constant(1), Negate(new BoundVar("v")))), b)
       val z = f.toZipper()
-      val LetZ(x, AddZ(_, NegateZ(v)), b1) = z
+      val LetZ(x, Some(AddZ(_, NegateZ(v))), b1) = z
       
       println(f)
       println(z)
@@ -59,6 +64,16 @@ object ArithSwivelTest {
       println(x)
       println(b1)
       println((b, b.toZipper(), b.toZipper().value))
+    }   
+    {
+      val b = new BoundVar("b")
+      val f = Let(b, None, b)
+      val z = f.toZipper()
+      val LetZ(x, o, b1) = z
+      
+      println(f)
+      println(z)
+      println(o)
     }   
     
     val f = Mul(Seq(Add(Constant(1), Negate(new BoundVar("a"))), Constant(5)))
@@ -76,15 +91,28 @@ object ArithSwivelTest {
     val _: Mul = z.copy(factors = z.factors.map(v => v.replace(new BoundVar("test")).value).view.force).value
 
     val AddZ(_, NegateZ(v)) = z.factors(0)
-    println(v)
+    println(v : ArgumentZ)
     println(v.root)
     println(v.value)
 
     val Add(_, Negate(v1)) = f.factors(0)
-    println(v1)
+    println(v1 : Argument)
 
     println(f.subtrees)
     println(z.subtrees.view.force)
+    
+    {
+      val b = new BoundVar("b")
+      val f = Let(b, Some(Obj(scala.collection.immutable.ListMap('b -> b, 'a -> Constant(5)))), b)
+      val z = f.toZipper()
+      val LetZ(x, Some(o: ObjZ), b1) = z
+      
+      println(f)
+      println(z)
+      println(o)
+      println(o.fields('a))
+      println(o.subtrees)
+    }   
   }
 }
 
