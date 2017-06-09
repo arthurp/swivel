@@ -147,7 +147,7 @@ class BasicTreeMacros(val c: Context) {
       def $castName($v: ${name}#RootValue): ${name} = $v match {
         case $v1: ${name} => $v1
         case _ =>
-          throw new Error($v + " provided where " + ${name.decoded} + " expected. (Sorry about the dynamic typing.)")
+          throw new Error($v + " provided where " + ${name.toString()} + " expected. (Sorry about the dynamic typing.)")
       }
       """,
     q"""
@@ -155,7 +155,7 @@ class BasicTreeMacros(val c: Context) {
       def $checkSubtreeName($v: ${name}#RootValue): Unit = $v match {
         case _: ${name} => ()
         case _ =>
-          throw new Error($v + " provided where " + ${name.decoded} + " expected. (Sorry about the dynamic typing.)")
+          throw new Error($v + " provided where " + ${name.toString()} + " expected. (Sorry about the dynamic typing.)")
       }
       """
     )
