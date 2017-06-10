@@ -245,6 +245,8 @@ class BasicTreeMacros(val c: Context) {
             false
           case v@q"new ${Ident(n)}[${targs}]()" if n == Builtins.transformSym.name =>
             false
+          case v@q"new ${Ident(n)}()" if n == Builtins.transformSym.name =>
+            false
           case v =>
             true
         }))

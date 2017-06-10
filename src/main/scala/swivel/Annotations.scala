@@ -45,7 +45,7 @@ final class replacement[ReplacementValue] extends Annotation with StaticAnnotati
   * Additional restrictions are provided at runtime. A subclass of a class with @replacement
   * may not override the replacement type.
   */
-// TODO: @compileTimeOnly("Transform must be applied to a class also annotated with @root, @branch, or @leaf")
+@compileTimeOnly("Transform must be applied to a class also annotated with @root, @branch, or @leaf")
 final class transform[TransformFunction] extends Annotation with StaticAnnotation
 
 /** Mark a class parameter as a child of this node in the tree.
