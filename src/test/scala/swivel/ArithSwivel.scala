@@ -12,7 +12,18 @@ package swivel
  */
 
 object ArithSwivel {
+  trait Transform extends TransformFunction {
+    val onFormula: PartialFunction[FormulaZ, Formula] = {
+      case a: ArgumentZ => onArgument(a)
+    }
+    val onArgument: PartialFunction[ArgumentZ, Argument] = EmptyFunction
+    
+    def apply(f: FormulaZ) = transformWith[FormulaZ, Formula](f)(this, onFormula)
+    def apply(f: ArgumentZ) = transformWith[ArgumentZ, Argument](f)(this, onArgument)
+  }
+
   @replacement[Formula]
+  @transform[Transform]
   @root
   sealed abstract class Formula
 
@@ -20,35 +31,108 @@ object ArithSwivel {
     println("test")
   }
 
-  @leaf
+  @leaf @transform
   final case class Add(@subtree l: Formula, @subtree r: Formula) extends Formula
-  @leaf
+  @leaf @transform
   final case class Mul(@subtree factors: Seq[Formula]) extends Formula
-  @leaf
-  final case class Obj(@subtree fields: Map[Symbol, Argument]) extends Formula
-  @leaf
+  @leaf @transform
+  final case class Obj(@subtree fields: Map[Symbol, Argument]) extends Formula  
+  @leaf @transform
   final case class Negate(@subtree e: Argument) extends Formula {
     override def toString() = s"-$e"
   }
-  @leaf
+  @leaf @transform
   final case class Let(x: BoundVar, @subtree expr: Option[Formula], @subtree body: Formula) extends Formula
-
+  
   @branch
   sealed abstract class Argument extends Formula
-  @leaf
+  @leaf @transform
   final case class Constant(n: Int) extends Argument {
     override def toString() = s"$n"
   }
-  @leaf
+  @leaf @transform
   final class BoundVar(val name: String) extends Argument {
     override def toString() = s"$name#${hashCode()}"
     def copy(name: String) = new BoundVar(name) 
   }
 }
+
+object ArithTransform {
+  import ArithSwivel._
+
+  /*
+  @transform
+  class Transform {
+    val onFormula: PartialFunction[FormulaZ, Formula]
+    val onArgument: PartialFunction[ArgumentZ, Argument]
+  }
+  */
+
+/*  
+  class Transform {
+    def apply(a: ArgumentZ): ArgumentZ = transform(a)
+    def apply(e: FormulaZ): FormulaZ = transform(e)
+  
+    val onFormula: PartialFunction[FormulaZ, Formula] = EmptyFunction
+    val onArgument: PartialFunction[ArgumentZ, Argument] = EmptyFunction
+  
+    def transferMetadata(source: Formula, destination: Formula): Unit = ()
+    
+    def transform(a: ArgumentZ): ArgumentZ = {
+      val pf = onArgument
+      if (pf isDefinedAt a) {
+        val a1 = pf(a)
+        transferMetadata(a.value, a1)
+        a.replace(a1)
+      } else {
+        a
+      }
+    }
+  
+    def transform(f: FormulaZ): FormulaZ = {
+      val pf = onFormula
+      if (pf isDefinedAt f) {
+        // Process all children
+        val nSubtrees = f.subtrees.size
+        (0 until nSubtrees).foldRight(f) { (root, i) =>
+          val current = root.subtrees(i)
+          transform(current)
+        }
+        val f2 = pf(f1)
+        transferMetadata(f.value, f1)
+        f.replace(f1)
+      } else {
+        f
+      }
+    }
+    
+  }
+  */
+}
  
 object ArithSwivelTest {
   import ArithSwivel._
-  def main(args: Array[String]) = {
+  
+  object PrintFunction extends Transform {
+    override val onFormula: PartialFunction[FormulaZ, Formula] = {
+      case v =>
+        println(v)
+        v.value
+    }
+    override val onArgument: PartialFunction[ArgumentZ, Argument] =  {
+      case v =>
+        println(v)
+        v.value
+    }
+  }
+  
+  case class ReplaceVariable(o: BoundVar, n: Argument) extends Transform {
+    override val onArgument: PartialFunction[ArgumentZ, Argument] =  {
+      case Zipper(`o`) => n
+    }
+  }
+  
+  def main(args: Array[String]): Unit = {
     {
       val b = new BoundVar("b")
       val f = Let(b, Some(Add(Constant(1), Negate(new BoundVar("v")))), b)
@@ -111,8 +195,19 @@ object ArithSwivelTest {
       println(z)
       println(o)
       println(o.fields('a))
+      println(o.fields('a).replace(Constant(10)))
+      println(o.fields('a).replace(Constant(10)).root.value)
       println(o.subtrees)
+      
+      println(ReplaceVariable(b, Constant(100))(z))
+  
+      println()
+      PrintFunction(z)
     }   
+
+    println()
+    val f2 = PrintFunction(z)
+    println((f == f2, f eq f2))
   }
 }
 

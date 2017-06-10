@@ -35,8 +35,18 @@ final class leaf extends Annotation with StaticAnnotation {
   * Additional restrictions are provided at runtime. A subclass of a class with @replacement
   * may not override the replacement type.
   */
-// TODO: @compileTimeOnly("Swivel requires macro paradise")
+@compileTimeOnly("Swivel requires macro paradise")
 final class replacement[ReplacementValue] extends Annotation with StaticAnnotation
+
+/** Trigger the generation
+  * Only classes with a superclass with @replacement will have a replace method on their
+  * zippers.
+  *
+  * Additional restrictions are provided at runtime. A subclass of a class with @replacement
+  * may not override the replacement type.
+  */
+// TODO: @compileTimeOnly("Transform must be applied to a class also annotated with @root, @branch, or @leaf")
+final class transform[TransformFunction] extends Annotation with StaticAnnotation
 
 /** Mark a class parameter as a child of this node in the tree.
  *  
@@ -44,6 +54,5 @@ final class replacement[ReplacementValue] extends Annotation with StaticAnnotati
  *  Non-children are treated as primitive values and are simply passed through without any zipper handling.
  *  This applies to both unapply and accessors.
   */
-// TODO: @compileTimeOnly("Swivel requires macro paradise")
 @param
 final class subtree extends Annotation with StaticAnnotation

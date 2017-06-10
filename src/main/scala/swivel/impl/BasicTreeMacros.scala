@@ -1,6 +1,7 @@
 package swivel.impl
 
 import scala.reflect.macros.whitebox.Context 
+import scala.language.existentials
 
 object BasicTreeMacros {
   class CompileErrorReported() extends Exception
@@ -15,12 +16,16 @@ class BasicTreeMacros(val c: Context) {
     val subtreeSym = subtree.symbol
     val replacement = c.typecheck(tq"_root_.swivel.replacement", c.TYPEmode)
     val replacementSym = replacement.symbol
+    val transform = c.typecheck(tq"_root_.swivel.transform", c.TYPEmode)
+    val transformSym = transform.symbol
     val Zipper = c.typecheck(tq"_root_.swivel.Zipper", c.TYPEmode)
     val ZipperSym = Zipper.symbol
     val ZipperParent = c.typecheck(tq"_root_.swivel.ZipperParent", c.TYPEmode)
     val ZipperParentSym = ZipperParent.symbol
     val ZipperReplaceable = c.typecheck(tq"_root_.swivel.ZipperReplaceable", c.TYPEmode)
     val ZipperReplaceableSym = ZipperReplaceable.symbol
+    val ZipperTransformable = c.typecheck(tq"_root_.swivel.ZipperTransformable", c.TYPEmode)
+    val ZipperTransformableSym = ZipperTransformable.symbol
     val SwivelValue = c.typecheck(tq"_root_.swivel.SwivelValue", c.TYPEmode)
     val SwivelValueSym = SwivelValue.symbol
   }
@@ -172,7 +177,7 @@ class BasicTreeMacros(val c: Context) {
     )
   }
   
-  def buildReplacementParts(mods: Modifiers): (Seq[Tree], Seq[Tree]) = {
+  def buildReplacementSupport(mods: Modifiers): (Seq[Tree], Seq[Tree]) = {
     val replacementValueTypes = mods.annotations.collect({
       case v@q"new ${Ident(n)}[$replacmentValueType]()" if n == Builtins.replacementSym.name =>
         replacmentValueType
@@ -189,11 +194,56 @@ class BasicTreeMacros(val c: Context) {
     }
   }
   
+  def buildTransformSupportNonleaf(mods: Modifiers): (Seq[Tree], Seq[Tree]) = {
+    getTransformAnnotationInfo(mods) match {
+      case Some(EmptyTree) =>
+        c.error(c.enclosingPosition, "@transform on non-leaf nodes must have a function type.")
+        (Seq(), Seq())
+      case Some(transformFunctionType) =>
+        (Seq(tq"${Builtins.ZipperTransformableSym}"), Seq(q"type TranformFunction = $transformFunctionType"))
+      case None =>
+        (Seq(), Seq())
+    }
+  }
+  
+  def hasTransformSupportLeaf(mods: Modifiers): Boolean = {
+    getTransformAnnotationInfo(mods) match {
+      case Some(EmptyTree) =>
+        true
+      case Some(ty) =>
+        c.warning(ty.pos, "The argument to @transform on leafs is ignored.")
+        true
+      case None =>
+        false
+    }
+  }
+  
+  def getTransformAnnotationInfo(mods: Modifiers): Option[Tree] = {
+    val transformValueTypes = mods.annotations.collect({
+      case v@q"new ${Ident(n)}()" if n == Builtins.transformSym.name =>
+        EmptyTree
+      case v@q"new ${Ident(n)}[$replacmentValueType]()" if n == Builtins.transformSym.name =>
+        replacmentValueType
+    })
+    
+    transformValueTypes.toSeq match {
+      case Seq(ty) =>
+        Some(ty)
+      case Seq() =>
+        None
+      case ty +: _ =>
+        c.error(ty.pos, "@transform may only be specified once.")
+        Some(ty)
+    }
+  }
+  
   def cleanedMods(mods: Modifiers): Modifiers = {
     mods match {
       case Modifiers(flags, p, anns) =>
         Modifiers(flags, p, anns.filter({
           case v@q"new ${Ident(n)}[${targs}]()" if n == Builtins.replacementSym.name =>
+            false
+          case v@q"new ${Ident(n)}[${targs}]()" if n == Builtins.transformSym.name =>
             false
           case v =>
             true
@@ -226,15 +276,18 @@ class BasicTreeMacros(val c: Context) {
         }
         """
       
-      val (replacementSuper, replacementDefs) = buildReplacementParts(mods)
+      val (replacementSuper, replacementDefs) = buildReplacementSupport(mods)
+      val (transformSuper, transformDefs) = buildTransformSupportNonleaf(mods)
       val zCls = q"""
-        $cMods class $zName extends ${Builtins.ZipperSym} with ..$replacementSuper {
+        $cMods class $zName extends ${Builtins.ZipperSym} with ..$replacementSuper with ..$transformSuper {
           type RootValue = $name
           type RootZipper = $zName
           type RootZipperParent = $zpName
           type Value <: $name
+          type SelfType <: $zName
           
           ..$replacementDefs
+          ..$transformDefs
         }
         """
       
@@ -290,12 +343,15 @@ class BasicTreeMacros(val c: Context) {
         }
         """
           
-      val (replacementSuper, replacementDefs) = buildReplacementParts(mods)
+      val (replacementSuper, replacementDefs) = buildReplacementSupport(mods)
+      val (transformSuper, transformDefs) = buildTransformSupportNonleaf(mods)
       val zCls = q"""
-        $cMods class $zName extends $zDirectSuper with ..$replacementSuper {
+        $cMods class $zName extends $zDirectSuper with ..$replacementSuper with ..$transformSuper {
           type Value <: $name
+          type SelfType <: $zName
           
           ..$replacementDefs
+          ..$transformDefs
         }"""
       
       val zpCls = q"""
@@ -341,8 +397,7 @@ class BasicTreeMacros(val c: Context) {
       val zName = addZ(vName)
       val zpNameBase = addZP(vName)
 
-      
-      def parentArg = q"protected val $parentName: Option[$directSuper#RootZipperParent]"
+      def parentArg = q"val $parentName: Option[$directSuper#RootZipperParent]"
       def parent = Ident(parentArg.name)
       def indexArg = q"protected val $indexName: Int"
       def index = Ident(indexArg.name)
@@ -374,6 +429,8 @@ class BasicTreeMacros(val c: Context) {
         def accessorDefZ: DefTree
         def copyArgZ: ValDef = ValDef(Modifiers(Flag.PARAM), name, accessorType, rawAccessorExprZ).originalArgPos()
 
+        val transformSubFunction: TermName = TermName("on" + elementType.name.toString())
+        
         def elementType: Ident
         def elementTypeZ: Ident = Ident(addZ(elementType.name.toTypeName))
         def elementCompanionZ: Ident = Ident(elementTypeZ.name.toTermName)
@@ -381,6 +438,12 @@ class BasicTreeMacros(val c: Context) {
         def argZP: ValDef = ValDef(Modifiers(Flag.PARAM), name, accessorType, EmptyTree).originalArgPos()
         def accessorExprZP: Tree
         def zpDefinition: Option[ClassDef]
+
+        lazy val transOrigName = c.freshName(name)
+        def transIntermediateName: TermName
+        def transOrigDefinition = Some(q"""val $transOrigName = ${accessorExprZ}""")
+        def transIntermediateDefinition: Option[Tree]
+
         
         protected implicit class TreeAdds[T <: Tree](val t: T) {
           def originalArgPos(): t.type = c.internal.setPos(t, originalArg.pos)
@@ -401,6 +464,9 @@ class BasicTreeMacros(val c: Context) {
 
         def contributeToSubtrees(o: Tree): Tree = o
         def contributeToSubtreesZ(o: Tree): Tree = o
+
+        lazy val transIntermediateName = transOrigName
+        def transIntermediateDefinition = None
       }
       
       abstract class SubtreeArgument extends ArgumentHandler {
@@ -427,9 +493,10 @@ class BasicTreeMacros(val c: Context) {
         }
         
         def zpDefinition: Option[ClassDef] = {
+          // TODO: Make this not a case class and add custom generated hashCode and equals.
           Some(
           q"""
-            ${addCase(addFinal(cMods))} class $zpName(..$zpArgs, $parentArg) extends $zpDirectSuper {
+            ${addFinal(cMods)} class $zpName(..$zpArgs, $parentArg) extends $zpDirectSuper {
               type Value = $vName
             
               def $putName(v: RootValue): $zName = new $zName(${newValue(zpReconstructValueArgs)}, $parent)
@@ -440,6 +507,28 @@ class BasicTreeMacros(val c: Context) {
             }
             """.originalArgPos())
         }
+
+      
+        lazy val transIntermediateName = c.freshName(name)
+        def transComputeSingle(v: Tree) = q"""
+          { 
+            val modified1Value = $v.transformChildren(f)
+            val modified1 = modified1Value.toZipper($v.$parentName)
+            val modified2 = if (f.${transformSubFunction}.isDefinedAt(modified1)) {
+              f.${transformSubFunction}(modified1)
+            } else {
+              modified1Value
+            }
+            val vValue = $v.value
+            if ((vValue eq modified2) || (vValue == modified2)) {
+              vValue
+            } else {
+              changed = true
+              modified2
+            }
+          }"""
+        def transComputation: Tree
+        def transIntermediateDefinition: Option[Tree] = Some(q"val $transIntermediateName = $transComputation") 
       }
 
       case class ScalarArgument(originalArg: ValDef, elementType: Ident) extends SubtreeArgument {
@@ -460,6 +549,8 @@ class BasicTreeMacros(val c: Context) {
         def zpReconstructSelfArg = q"$elementCompanionZ.$castName(v)"
         def zpToStringSelfCode = Seq(q"${"[]"}")
         def accessorExprZP: Tree = q"$name"
+
+        def transComputation: Tree = transComputeSingle(Ident(transOrigName))
       }
       
       case class SeqArgument(originalArg: ValDef, containerType: Tree, elementType: Ident) extends SubtreeArgument {
@@ -496,6 +587,9 @@ class BasicTreeMacros(val c: Context) {
             v.toString()
           }).toString()""".originalArgPos())
         def accessorExprZP: Tree = q"$name"
+
+        override def transOrigDefinition = Some(q"""val $transOrigName = ${accessorExprZ}.view.force""")
+        def transComputation: Tree = q"$transOrigName.map(v => ${transComputeSingle(q"v")})"
       }
       
       case class OptionArgument(originalArg: ValDef, containerType: Tree, elementType: Ident) extends SubtreeArgument {
@@ -516,6 +610,8 @@ class BasicTreeMacros(val c: Context) {
         def zpReconstructSelfArg = q"Some($elementCompanionZ.$castName(v))"
         def zpToStringSelfCode = Seq(q"${"[]"}")
         def accessorExprZP: Tree = q"$name"
+
+        def transComputation: Tree = q"$transOrigName.map(v => ${transComputeSingle(q"v")})"
       }
       
       case class MapArgument(originalArg: ValDef, containerType: Tree, keyType: Tree, elementType: Ident) extends SubtreeArgument {
@@ -550,6 +646,9 @@ class BasicTreeMacros(val c: Context) {
         def zpReconstructSelfArg = q"$accessorExprZP.updated($key, $elementCompanionZ.$castName(v))".originalArgPos()
         def zpToStringSelfCode = Seq(q"""$accessorExprZP.mapValues(_.toString()).updated($key, "[]").toString()""".originalArgPos())
         def accessorExprZP: Tree = q"$name"
+        
+        override def transOrigDefinition = Some(q"""val $transOrigName = ${accessorExprZ}""")
+        def transComputation: Tree = q"$transOrigName.mapValues(v => ${transComputeSingle(q"v")}).view.force"
       }
             
       object ArgumentHandler {
@@ -588,17 +687,39 @@ class BasicTreeMacros(val c: Context) {
       //       This is needed so that the value created goes through normal channels and the real constructor can be
       //       private to force such things as hash-consing.
           
-      val (replacementSuper, replacementDefs) = buildReplacementParts(mods)
+      val (replacementSuper, replacementDefs) = buildReplacementSupport(mods)      
+      val hasTransform = hasTransformSupportLeaf(mods)
+      
+      val transformMethod = if (hasTransform) {
+        val transformMethod = q"""
+          def transformChildren(f: TranformFunction): $vName = {
+            var changed: Boolean = false
+            ..${allArgHandlers.flatMap(_.transOrigDefinition)}
+            ..${allArgHandlers.flatMap(_.transIntermediateDefinition)}
+            if (!changed) {
+              this.value
+            } else {
+              copy(..${allArgHandlers.map(h => h.transIntermediateName)}).value
+            }
+          }
+          """
+        Some(transformMethod)
+      } else {
+        None
+      }
+      
       val zCls = q"""
-        final class $zName($underlyingArg, $parentArg) extends $zDirectSuper with ..${replacementSuper} {
+        final class $zName($underlyingArg, $parentArg) extends $zDirectSuper with ..$replacementSuper {
           type Value = $vName
+          type SelfType = $zName
           
           ..${allArgHandlers.map(_.accessorDefZ)}
           def subtrees: Seq[RootZipper] = ${allArgHandlers.foldRight(q"Seq()")(_ contributeToSubtreesZ _)}
           
           def copy(..${allArgHandlers.map(_.copyArgZ)}): $zName = new $zName($underlying.copy(..${allArgHandlers.map(_.copyArgZ.name)}), ${parentArg.name})
                     
-          ..${replacementDefs}
+          ..$replacementDefs
+          ..${transformMethod.toSeq}
         }
         """
 
