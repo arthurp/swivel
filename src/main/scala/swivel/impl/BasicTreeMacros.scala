@@ -1,7 +1,21 @@
+//
+// BasicTreeMacros.scala -- Scala macro implementation BasicTreeMacros
+// Project swivel
+//
+// Created by amp on Jun, 2017.
+//
+// Copyright (c) 2017 The University of Texas at Austin. All rights reserved.
+//
+// Use and redistribution of this file is governed by the license terms in
+// the LICENSE file found in the project's top-level directory and also found at
+// URL: http://orc.csres.utexas.edu/license.shtml .
+//
+
 package swivel.impl
 
 import scala.reflect.macros.whitebox.Context 
 import scala.language.existentials
+import scala.reflect.internal.Flags
 
 object BasicTreeMacros {
   class CompileErrorReported() extends Exception
@@ -115,6 +129,11 @@ class BasicTreeMacros(val c: Context) {
   def addZP(n: TypeName) = TypeName(n.decodedName + "Z$P")
   def addSubtreeName(n: TypeName, subName: Name) = TypeName(n.decodedName + "$" + subName.decodedName)
   
+  def getFlag(mods: Modifiers, flag: FlagSet): Boolean = mods match {
+    case Modifiers(flags, p, anns) =>
+      (flags | flag) == flags
+  }
+  
   def addFinal(mods: Modifiers): Modifiers = mods match {
     case Modifiers(flags, p, anns) =>
       Modifiers(flags | Flag.FINAL, p, anns)
@@ -163,7 +182,7 @@ class BasicTreeMacros(val c: Context) {
       def $castName($v: ${name}#RootValue): ${name} = $v match {
         case $v1: ${name} => $v1
         case _ =>
-          throw new Error($v + " provided where " + ${name.toString()} + " expected. (Sorry about the dynamic typing.)")
+          throw new IllegalArgumentException($v + " provided where " + ${name.toString()} + " expected.")
       }
       """,
     q"""
@@ -171,7 +190,7 @@ class BasicTreeMacros(val c: Context) {
       def $checkSubtreeName($v: ${name}#RootValue): Unit = $v match {
         case _: ${name} => ()
         case _ =>
-          throw new Error($v + " provided where " + ${name.toString()} + " expected. (Sorry about the dynamic typing.)")
+          throw new IllegalArgumentException($v + " provided where " + ${name.toString()} + " expected.")
       }
       """
     )
@@ -258,7 +277,8 @@ class BasicTreeMacros(val c: Context) {
       val (inCls, inObj) = extractClassAndObject("root", annottees)
       
       val (mods, name, supers) = inCls match {
-        case q"$mods class ${name: TypeName} extends ..${supers: Seq[Tree]}" =>
+        case q"$mods class ${name: TypeName} extends ..${supers: Seq[Tree]}"
+             if getFlag(mods, Flag.ABSTRACT) && getFlag(mods, Flag.SEALED) =>
           (mods, name, supers)
         case _ =>
           c.error(c.enclosingPosition, "@root may only be applied to sealed abstract classes.")
@@ -325,7 +345,8 @@ class BasicTreeMacros(val c: Context) {
       val (inCls, inObj) = extractClassAndObject("branch", annottees)
       
       val (mods, name, supers) = inCls match {
-        case q"$mods class ${name: TypeName} extends ..${supers: Seq[Tree]}" =>
+        case q"$mods class ${name: TypeName} extends ..${supers: Seq[Tree]}"
+             if getFlag(mods, Flag.ABSTRACT) && getFlag(mods, Flag.SEALED) =>
           (mods, name, supers)
         case _ =>
           c.error(c.enclosingPosition, "@branch may only be applied to sealed abstract classes.")
@@ -381,10 +402,11 @@ class BasicTreeMacros(val c: Context) {
       val (inCls, inObj) = extractClassAndObject("leaf", annottees)
       
       val (mods, vName, allArgs, supers, defs) = inCls match {
-        case q"${mods: Modifiers} class ${name: TypeName}(..${args: Seq[Tree]}) extends ..${supers: Seq[Tree]} { ..${defs: Seq[Tree]} }" =>
+        case q"${mods: Modifiers} class ${name: TypeName}(..${args: Seq[Tree]}) extends ..${supers: Seq[Tree]} { ..${defs: Seq[Tree]} }" 
+             if getFlag(mods, Flag.FINAL) && !getFlag(mods, Flag.TRAIT) =>
           (mods, name, args, supers, defs)
         case _ =>
-          c.error(c.enclosingPosition, "@leaf may only be applied to final case classes.")
+          c.error(c.enclosingPosition, "@leaf may only be applied to final classes.")
           throw new CompileErrorReported()          
       }
 
@@ -528,9 +550,9 @@ class BasicTreeMacros(val c: Context) {
               changed = true
               modified2
             }
-          }"""
+          }""".originalArgPos()
         def transComputation: Tree
-        def transIntermediateDefinition: Option[Tree] = Some(q"val $transIntermediateName = $transComputation") 
+        def transIntermediateDefinition: Option[Tree] = Some(q"val $transIntermediateName = $transComputation".originalArgPos()) 
       }
 
       case class ScalarArgument(originalArg: ValDef, elementType: Ident) extends SubtreeArgument {
@@ -590,8 +612,8 @@ class BasicTreeMacros(val c: Context) {
           }).toString()""".originalArgPos())
         def accessorExprZP: Tree = q"$name"
 
-        override def transOrigDefinition = Some(q"""val $transOrigName = ${accessorExprZ}.view.force""")
-        def transComputation: Tree = q"$transOrigName.map(v => ${transComputeSingle(q"v")})"
+        override def transOrigDefinition = Some(q"""val $transOrigName = ${accessorExprZ}.view.force""".originalArgPos())
+        def transComputation: Tree = q"$transOrigName.map(v => ${transComputeSingle(q"v")})".originalArgPos()
       }
       
       case class OptionArgument(originalArg: ValDef, containerType: Tree, elementType: Ident) extends SubtreeArgument {
@@ -613,7 +635,7 @@ class BasicTreeMacros(val c: Context) {
         def zpToStringSelfCode = Seq(q"${"[]"}")
         def accessorExprZP: Tree = q"$name"
 
-        def transComputation: Tree = q"$transOrigName.map(v => ${transComputeSingle(q"v")})"
+        def transComputation: Tree = q"$transOrigName.map(v => ${transComputeSingle(q"v")})".originalArgPos()
       }
       
       case class MapArgument(originalArg: ValDef, containerType: Tree, keyType: Tree, elementType: Ident) extends SubtreeArgument {
@@ -649,8 +671,8 @@ class BasicTreeMacros(val c: Context) {
         def zpToStringSelfCode = Seq(q"""$accessorExprZP.mapValues(_.toString()).updated($key, "[]").toString()""".originalArgPos())
         def accessorExprZP: Tree = q"$name"
         
-        override def transOrigDefinition = Some(q"""val $transOrigName = ${accessorExprZ}""")
-        def transComputation: Tree = q"$transOrigName.mapValues(v => ${transComputeSingle(q"v")}).view.force"
+        override def transOrigDefinition = Some(q"""val $transOrigName = ${accessorExprZ}""".originalArgPos())
+        def transComputation: Tree = q"$transOrigName.mapValues(v => ${transComputeSingle(q"v")}).view.force".originalArgPos()
       }
             
       object ArgumentHandler {

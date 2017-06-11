@@ -1,3 +1,16 @@
+//
+// Annotations.scala -- Scala annotations for macro processing
+// Project swivel
+//
+// Created by amp on Jun, 2017.
+//
+// Copyright (c) 2017 The University of Texas at Austin. All rights reserved.
+//
+// Use and redistribution of this file is governed by the license terms in
+// the LICENSE file found in the project's top-level directory and also found at
+// URL: http://orc.csres.utexas.edu/license.shtml .
+//
+
 package swivel
 
 import scala.annotation.Annotation
@@ -35,24 +48,32 @@ final class leaf extends Annotation with StaticAnnotation {
   * Additional restrictions are provided at runtime. A subclass of a class with @replacement
   * may not override the replacement type.
   */
-@compileTimeOnly("Swivel requires macro paradise")
+@compileTimeOnly("@replacement must be applied to a class also annotated with @root, @branch, or @leaf")
 final class replacement[ReplacementValue] extends Annotation with StaticAnnotation
 
-/** Trigger the generation
-  * Only classes with a superclass with @replacement will have a replace method on their
-  * zippers.
+/** Specify that the class should allow transformation of it's subtrees.
   *
-  * Additional restrictions are provided at runtime. A subclass of a class with @replacement
-  * may not override the replacement type.
+  * @tparam TransformFunction
+  * ''(Only specified when @transform is applied to a root or branch)'' must be a subclass of
+  * TransformFunction with methods named onX for each class X which appears as a parameter type in a leaf.
+  *
+  * The TransformFunction should be defined something like this:
+  * {{{
+  *   class Transform extends TransformFunction {
+  *     val onExpression: PartialFunction[ExpressionZ, Expression] = EmptyFunction
+  *     def apply(e: ExpressionZ) = transformWith[ExpressionZ, Expression](e)(this, onExpression)
+  *   }
+  * }}}
   */
-@compileTimeOnly("Transform must be applied to a class also annotated with @root, @branch, or @leaf")
+@compileTimeOnly("@transform must be applied to a class also annotated with @root, @branch, or @leaf")
 final class transform[TransformFunction] extends Annotation with StaticAnnotation
 
 /** Mark a class parameter as a child of this node in the tree.
- *  
- *  Children appear as zipper values and can be traversed and extracted.
- *  Non-children are treated as primitive values and are simply passed through without any zipper handling.
- *  This applies to both unapply and accessors.
+  *
+  * Children appear as zipper values and can be traversed and extracted.
+  * Non-children are treated as primitive values and are simply passed through without any zipper handling.
+  * This applies to both unapply and accessors.
   */
 @param
 final class subtree extends Annotation with StaticAnnotation
+
