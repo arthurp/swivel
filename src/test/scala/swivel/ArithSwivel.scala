@@ -26,13 +26,13 @@ package swivel
 
 object ArithSwivel {
   trait Transform extends TransformFunction {
-    val onFormula: PartialFunction[FormulaZ, Formula] = {
-      case a: ArgumentZ => onArgument(a)
+    val onFormula: PartialFunction[Formula.Z, Formula] = {
+      case a: Argument.Z => onArgument(a)
     }
-    val onArgument: PartialFunction[ArgumentZ, Argument] = EmptyFunction
+    val onArgument: PartialFunction[Argument.Z, Argument] = EmptyFunction
     
-    def apply(f: FormulaZ) = transformWith[FormulaZ, Formula](f)(this, onFormula)
-    def apply(f: ArgumentZ) = transformWith[ArgumentZ, Argument](f)(this, onArgument)
+    def apply(f: Formula.Z) = transformWith[Formula.Z, Formula](f)(this, onFormula)
+    def apply(f: Argument.Z) = transformWith[Argument.Z, Argument](f)(this, onArgument)
   }
 
   @replacement[Formula]
@@ -76,22 +76,22 @@ object ArithTransform {
   /*
   @transform
   class Transform {
-    val onFormula: PartialFunction[FormulaZ, Formula]
-    val onArgument: PartialFunction[ArgumentZ, Argument]
+    val onFormula: PartialFunction[Formula.Z, Formula]
+    val onArgument: PartialFunction[Argument.Z, Argument]
   }
   */
 
 /*  
   class Transform {
-    def apply(a: ArgumentZ): ArgumentZ = transform(a)
-    def apply(e: FormulaZ): FormulaZ = transform(e)
+    def apply(a: Argument.Z): Argument.Z = transform(a)
+    def apply(e: Formula.Z): Formula.Z = transform(e)
   
-    val onFormula: PartialFunction[FormulaZ, Formula] = EmptyFunction
-    val onArgument: PartialFunction[ArgumentZ, Argument] = EmptyFunction
+    val onFormula: PartialFunction[Formula.Z, Formula] = EmptyFunction
+    val onArgument: PartialFunction[Argument.Z, Argument] = EmptyFunction
   
     def transferMetadata(source: Formula, destination: Formula): Unit = ()
     
-    def transform(a: ArgumentZ): ArgumentZ = {
+    def transform(a: Argument.Z): Argument.Z = {
       val pf = onArgument
       if (pf isDefinedAt a) {
         val a1 = pf(a)
@@ -102,11 +102,11 @@ object ArithTransform {
       }
     }
   
-    def transform(f: FormulaZ): FormulaZ = {
+    def transform(f: Formula.Z): Formula.Z = {
       val pf = onFormula
       if (pf isDefinedAt f) {
         // Process all children
-        val nSubtrees = f.subtrees.size
+        val nSubtrees = f.subtrees.si.Ze
         (0 until nSubtrees).foldRight(f) { (root, i) =>
           val current = root.subtrees(i)
           transform(current)
@@ -127,12 +127,12 @@ object ArithSwivelTest {
   import ArithSwivel._
   
   object PrintFunction extends Transform {
-    override val onFormula: PartialFunction[FormulaZ, Formula] = {
+    override val onFormula: PartialFunction[Formula.Z, Formula] = {
       case v =>
         println(v)
         v.value
     }
-    override val onArgument: PartialFunction[ArgumentZ, Argument] =  {
+    override val onArgument: PartialFunction[Argument.Z, Argument] =  {
       case v =>
         println(v)
         v.value
@@ -140,7 +140,7 @@ object ArithSwivelTest {
   }
   
   case class ReplaceVariable(o: BoundVar, n: Argument) extends Transform {
-    override val onArgument: PartialFunction[ArgumentZ, Argument] =  {
+    override val onArgument: PartialFunction[Argument.Z, Argument] =  {
       case Zipper(`o`) => n
     }
   }
@@ -150,7 +150,7 @@ object ArithSwivelTest {
       val b = new BoundVar("b")
       val f = Let(b, Some(Add(Constant(1), Negate(new BoundVar("v")))), b)
       val z = f.toZipper()
-      val LetZ(x, Some(AddZ(_, NegateZ(v))), b1) = z
+      val Let.Z(x, Some(Add.Z(_, Negate.Z(v))), b1) = z
       
       println(f)
       println(z)
@@ -166,7 +166,7 @@ object ArithSwivelTest {
       val b = new BoundVar("b")
       val f = Let(b, None, b)
       val z = f.toZipper()
-      val LetZ(x, o, b1) = z
+      val Let.Z(x, o, b1) = z
       
       println(f)
       println(z)
@@ -174,10 +174,10 @@ object ArithSwivelTest {
     }   
     
     val f = Mul(Seq(Add(Constant(1), Negate(new BoundVar("a"))), Constant(5)))
-    val z: MulZ = f.toZipper()
+    val z: Mul.Z = f.toZipper()
     println(z.factors(0))
     println(z.factors(1))
-    println(z.factors(0).replace(new BoundVar("test")): BoundVarZ)
+    println(z.factors(0).replace(new BoundVar("test")): BoundVar.Z)
     println(z.factors(1).replace(new BoundVar("test")).parent.map(_.value))
     println(z.factors.map(_.replace(new BoundVar("test")).root.value).view.force)
     println(z.factors.map(_.replace(new BoundVar("test"))).view.force)
@@ -187,8 +187,8 @@ object ArithSwivelTest {
     println(z.copy(factors = z.factors.map(v => v.replace(new BoundVar("test")).value).view.force).root.value)
     val _: Mul = z.copy(factors = z.factors.map(v => v.replace(new BoundVar("test")).value).view.force).value
 
-    val AddZ(_, NegateZ(v)) = z.factors(0)
-    println(v : ArgumentZ)
+    val Add.Z(_, Negate.Z(v)) = z.factors(0)
+    println(v : Argument.Z)
     println(v.root)
     println(v.value)
 
@@ -202,7 +202,7 @@ object ArithSwivelTest {
       val b = new BoundVar("b")
       val f = Let(b, Some(Obj(scala.collection.immutable.ListMap('b -> b, 'a -> Constant(5)))), b)
       val z = f.toZipper()
-      val LetZ(x, Some(o: ObjZ), b1) = z
+      val Let.Z(x, Some(o: Obj.Z), b1) = z
       
       println(f)
       println(z)
