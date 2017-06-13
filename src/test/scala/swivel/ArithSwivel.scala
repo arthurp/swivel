@@ -41,7 +41,8 @@ object ArithSwivel {
   sealed abstract class Formula
 
   object Formula {
-    println("test")
+    println("test Formula")
+    val x = 2
   }
 
   @leaf @transform
@@ -51,14 +52,17 @@ object ArithSwivel {
   @leaf @transform
   final case class Obj(@subtree fields: Map[Symbol, Argument]) extends Formula  
   @leaf @transform
-  final case class Negate(@subtree e: Argument) extends Formula {
-    override def toString() = s"-$e"
+  final case class Negate(@subtree v: Argument) extends Formula {
+    override def toString() = s"-$v"
   }
   @leaf @transform
-  final case class Let(x: BoundVar, @subtree expr: Option[Formula], @subtree body: Formula) extends Formula
+  final case class Let(x: BoundVar, @subtree expr: Option[Seq[Formula]], @subtree body: Formula) extends Formula
   
   @branch
   sealed abstract class Argument extends Formula
+  object Argument {
+    println("test Argument")
+  }
   @leaf @transform
   final case class Constant(n: Int) extends Argument {
     override def toString() = s"$n"
@@ -146,11 +150,17 @@ object ArithSwivelTest {
   }
   
   def main(args: Array[String]): Unit = {
+    println(Formula.x)
+    
     {
       val b = new BoundVar("b")
-      val f = Let(b, Some(Add(Constant(1), Negate(new BoundVar("v")))), b)
+      val f = Let(b, Some(Seq(Add(Constant(1), Negate(new BoundVar("v"))))), b)
       val z = f.toZipper()
-      val Let.Z(x, Some(Add.Z(_, Negate.Z(v))), b1) = z
+      val Let.Z(x, Some(Seq(Add.Z(_, Negate.Z(v)))), b1) = z
+      
+      val body: Formula.Z = z.body
+      
+      z.subtrees
       
       println(f)
       println(z)
@@ -200,9 +210,9 @@ object ArithSwivelTest {
     
     {
       val b = new BoundVar("b")
-      val f = Let(b, Some(Obj(scala.collection.immutable.ListMap('b -> b, 'a -> Constant(5)))), b)
+      val f = Let(b, Some(Seq(Obj(scala.collection.immutable.ListMap('b -> b, 'a -> Constant(5))))), b)
       val z = f.toZipper()
-      val Let.Z(x, Some(o: Obj.Z), b1) = z
+      val Let.Z(x, Some(Seq(o: Obj.Z)), b1) = z
       
       println(f)
       println(z)

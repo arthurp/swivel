@@ -17,17 +17,21 @@ package swivel
   */
 trait SwivelValue {
   value =>
+  /** '''For internal use only'''
+    */
   type RootValue >: this.type
+  /** '''For internal use only'''
+    */
   type RootZipper <: swivel.Zipper
   /** '''For internal use only'''
-   */
-  @deprecated("For internal use only", "all")
+    */
   type RootZipperParent <: swivel.ZipperParent
+  /** The Zipper type for this object.
+    */
   type Zipper <: RootZipper
 
   /** '''For internal use only'''
-   */
-  @deprecated("For internal use only", "all")
+    */
   def toZipper(parent: Option[RootZipperParent]): Zipper
 
   /** Get a Zipper for this object.
@@ -45,25 +49,35 @@ trait SwivelValue {
   */
 trait ZipperBase {
   zipper =>
+  /** '''For internal use only'''
+    */
   type SelfType <: RootZipper
 
+  /** The value type wrapped by this zipper.
+    */
   type Value <: SwivelValue {
     type RootValue = zipper.RootValue
     type RootZipper = zipper.RootZipper
     type RootZipperParent = zipper.RootZipperParent
     //type Zipper = SelfType
   }
+  /** '''For internal use only'''
+    */
   type RootValue >: Value <: SwivelValue {
     type RootValue = zipper.RootValue
     type RootZipper = zipper.RootZipper
     type RootZipperParent = zipper.RootZipperParent
     type Zipper <: RootZipper
   }
+  /** '''For internal use only'''
+    */
   type RootZipper <: swivel.Zipper {
     type RootValue = zipper.RootValue
     type RootZipper = zipper.RootZipper
     type RootZipperParent = zipper.RootZipperParent
   }
+  /** '''For internal use only'''
+    */
   type RootZipperParent <: swivel.ZipperParent {
     type RootValue = zipper.RootValue
     type RootZipper = zipper.RootZipper
@@ -71,13 +85,11 @@ trait ZipperBase {
   }
 
   /** '''For internal use only'''
-   */
-  @deprecated("For internal use only", "all")
+    */
   val swivel_parent: Option[RootZipperParent]
-  
+
   /** '''For internal use only'''
-   */
-  @deprecated("For internal use only", "all")
+    */
   protected[this] def swivel_parentString: String = swivel_parent.map(p => s"<in ${p.toString()}>").getOrElse("<root>")
 }
 
@@ -100,12 +112,21 @@ trait Zipper extends ZipperBase {
   val value: Value
 
   /** The parent of this Zipper or None if this is the root.
-   *  
-   *  If this throws IllegalArgumentException it means there is a bug in the swivel macro.
+    *
+    * If this throws IllegalArgumentException it means there is a bug in the swivel macro.
     */
   def parent: Option[RootZipper] = swivel_parent map { p =>
     p.swivel_put(value)
   }
+
+  /** The sequence of ancestors of this Zipper.
+   *  
+   *  The sequence is lazy.
+    *
+    * If this throws IllegalArgumentException it means there is a bug in the swivel macro.
+    */
+  def parents: Seq[RootZipper] = Stream.iterate(Option(this: RootZipper))(_.flatMap(_.parent)).takeWhile(_.isDefined).map(_.get) 
+  
   /** The root above the current zipper.
     */
   def root: RootZipper = parent.map(_.root).getOrElse(this)
@@ -134,11 +155,13 @@ object Zipper {
       Some(z.value)
 }
 
-/** The super trait of all ZipperParents.
+/** '''For internal use only'''
+  *
+  * The super trait of all ZipperParents.
   *
   * These objects should never be directly visible to the client code.
+  *
   */
-@deprecated("For internal use only", "all")
 trait ZipperParent extends ZipperBase {
   zipper =>
   type RootZipperParent >: zipper.type <: swivel.ZipperParent {
@@ -148,12 +171,10 @@ trait ZipperParent extends ZipperBase {
   }
 
   /** '''For internal use only'''
-   */
-  @deprecated("For internal use only", "all")
+    */
   def swivel_put(v: RootValue): RootZipper
   /** '''For internal use only'''
-   */
-  @deprecated("For internal use only", "all")
+    */
   protected[swivel] def swivel_checkSubtree(v: RootValue): Unit
 }
 

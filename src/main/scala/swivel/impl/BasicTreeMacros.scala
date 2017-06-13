@@ -159,6 +159,7 @@ class BasicTreeMacros(val c: Context) {
   val reservedFieldNames = Set(
       "value",
       "toZipper",
+      "zipper",
       "subtrees",
       "parent",
       "root",
@@ -172,7 +173,7 @@ class BasicTreeMacros(val c: Context) {
   
   def checkFieldName(d: DefTree): Unit = {
     if (reservedFieldNames.contains(d.name.toTermName)) {
-      c.error(d.pos, s"The name ${d.name} is reserved by swivel. (The full list of reserved names is: ${reservedFieldNames.mkString(", ")})")
+      c.error(d.pos, s"The name ${d.name} is reserved by swivel and cannot be used as a member name on swivel values.")
     }
   }
   
@@ -290,7 +291,7 @@ class BasicTreeMacros(val c: Context) {
       }
       
       val (objMod, objSupers, objDefs) = inObj match {
-        case Some(q"$mods object ${name: TypeName} extends ..${supers: Seq[Tree]} { ..${defs: Seq[Tree]} }") =>
+        case Some(q"$mods object ${name} extends ..${supers: Seq[Tree]} { ..${defs: Seq[Tree]} }") =>
           (mods, supers, defs)
         case _ =>
           (Modifiers(), Seq(), Seq())
@@ -379,7 +380,7 @@ class BasicTreeMacros(val c: Context) {
       }
       
       val (objMod, objSupers, objDefs) = inObj match {
-        case Some(q"$mods object ${name: TypeName} extends ..${supers: Seq[Tree]} { ..${defs: Seq[Tree]} }") =>
+        case Some(q"$mods object ${name} extends ..${supers: Seq[Tree]} { ..${defs: Seq[Tree]} }") =>
           (mods, supers, defs)
         case _ =>
           (Modifiers(), Seq(), Seq())
@@ -458,7 +459,7 @@ class BasicTreeMacros(val c: Context) {
       }
       
       val (objMod, objSupers, objDefs) = inObj match {
-        case Some(q"$mods object ${name: TypeName} extends ..${supers: Seq[Tree]} { ..${defs: Seq[Tree]} }") =>
+        case Some(q"$mods object ${name} extends ..${supers: Seq[Tree]} { ..${defs: Seq[Tree]} }") =>
           (mods, supers, defs)
         case _ =>
           (Modifiers(), Seq(), Seq())
@@ -499,7 +500,7 @@ class BasicTreeMacros(val c: Context) {
         val zipperParentName: TypeName = addSubtreeName(zipperParentBase, name)
         
         def accessorType: Tree = originalArg.tpt
-        def accessorExpr: Tree = q"$name"
+        def accessorExpr: Tree = q"this.$name"
         def contributeToSubtrees(o: Tree): Tree
         //def arg: DefTree = originalArg
         
@@ -630,7 +631,7 @@ class BasicTreeMacros(val c: Context) {
         }
         def zpReconstructSelfArg = q"$elementCompanionZ.$castName(v)"
         def zpToStringSelfCode = Seq(q"${"[]"}")
-        def accessorExprZP: Tree = q"$name"
+        def accessorExprZP: Tree = q"this.$name"
 
         def transComputation: Tree = transComputeSingle(Ident(transOrigName))
       }
@@ -668,10 +669,48 @@ class BasicTreeMacros(val c: Context) {
           $accessorExprZP.updated($index, "[]").map({ v =>
             v.toString()
           }).toString()""".originalArgPos())
-        def accessorExprZP: Tree = q"$name"
+        def accessorExprZP: Tree = q"this.$name"
 
         override def transOrigDefinition = Some(q"""val $transOrigName = ${accessorExprZ}.view.force""".originalArgPos())
         def transComputation: Tree = q"$transOrigName.map(v => ${transComputeSingle(q"v")})".originalArgPos()
+      }
+      
+      case class OptionSeqArgument(originalArg: ValDef, containerType1: Tree, containerType2: Tree, elementType: Ident) extends SubtreeArgument {
+        require(isSubtree)
+        
+        def accessorTypeZ: Tree = tq"$containerType1[$containerType2[$elementTypeZ]]"
+        def accessorDefZ: DefTree = {
+          val zpConstrArgs = allArgHandlers.map(h => {
+             if(name != h.name) {
+               h.rawAccessorExprZ
+             } else {
+               q"${rawAccessorExprZ}.map(_.updated(i, null))".originalArgPos()
+             }
+           })
+          q"""
+            val $name: $accessorTypeZ = $rawAccessorExprZ.map(_.view.zipWithIndex.map({ p =>
+              val f = p._1
+              val i = p._2
+              f.toZipper(Some(new $zipperParentRef(..$zpConstrArgs, i, $parent)))
+            }))
+            """.originalArgPos()
+        }
+
+        def contributeToSubtrees(o: Tree): Tree = q"$o ++ $accessorExpr.toSeq.flatten".originalArgPos()
+        def contributeToSubtreesZ(o: Tree): Tree = q"$o ++ $accessorExprZ.toSeq.flatten".originalArgPos()
+
+        def zpArgs = {
+          allArgHandlers.map(_.argZP) :+ indexArg
+        }
+        def zpReconstructSelfArg = q"$accessorExprZP.map(_.updated($index, $elementCompanionZ.$castName(v)))".originalArgPos()
+        def zpToStringSelfCode = Seq(q"""
+          $accessorExprZP.map(_.updated($index, "[]").map({ v =>
+            v.toString()
+          })).toString()""".originalArgPos())
+        def accessorExprZP: Tree = q"this.$name"
+
+        override def transOrigDefinition = Some(q"""val $transOrigName = ${accessorExprZ}.map(_.view.force)""".originalArgPos())
+        def transComputation: Tree = q"$transOrigName.map(_.map(v => ${transComputeSingle(q"v")}))".originalArgPos()
       }
       
       case class OptionArgument(originalArg: ValDef, containerType: Tree, elementType: Ident) extends SubtreeArgument {
@@ -691,7 +730,7 @@ class BasicTreeMacros(val c: Context) {
         }
         def zpReconstructSelfArg = q"Some($elementCompanionZ.$castName(v))"
         def zpToStringSelfCode = Seq(q"${"[]"}")
-        def accessorExprZP: Tree = q"$name"
+        def accessorExprZP: Tree = q"this.$name"
 
         def transComputation: Tree = q"$transOrigName.map(v => ${transComputeSingle(q"v")})".originalArgPos()
       }
@@ -727,7 +766,7 @@ class BasicTreeMacros(val c: Context) {
         }
         def zpReconstructSelfArg = q"$accessorExprZP.updated($key, $elementCompanionZ.$castName(v))".originalArgPos()
         def zpToStringSelfCode = Seq(q"""$accessorExprZP.mapValues(_.toString()).updated($key, "[]").toString()""".originalArgPos())
-        def accessorExprZP: Tree = q"$name"
+        def accessorExprZP: Tree = q"this.$name"
         
         override def transOrigDefinition = Some(q"""val $transOrigName = ${accessorExprZ}""".originalArgPos())
         def transComputation: Tree = q"$transOrigName.mapValues(v => ${transComputeSingle(q"v")}).view.force".originalArgPos()
@@ -744,6 +783,8 @@ class BasicTreeMacros(val c: Context) {
               SeqArgument(d, prefix, elemType)
             case tq"$prefix[${elemType @ Ident(_)}]" if isOptionRef(prefix) =>
               OptionArgument(d, prefix, elemType)
+            case tq"$prefix1[$prefix2[${elemType @ Ident(_)}]]" if isOptionRef(prefix1) && isSeqRef(prefix2) =>
+              OptionSeqArgument(d, prefix1, prefix2, elemType)
             case tq"$prefix[$keyType, ${valType @ Ident(_)}]" if isMapRef(prefix) =>
               MapArgument(d, prefix, keyType, valType)
             case tpt =>
