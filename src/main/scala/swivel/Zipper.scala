@@ -120,13 +120,13 @@ trait Zipper extends ZipperBase {
   }
 
   /** The sequence of ancestors of this Zipper.
-   *  
-   *  The sequence is lazy.
+    *
+    * The sequence is lazy.
     *
     * If this throws IllegalArgumentException it means there is a bug in the swivel macro.
     */
-  def parents: Seq[RootZipper] = Stream.iterate(Option(this: RootZipper))(_.flatMap(_.parent)).takeWhile(_.isDefined).map(_.get) 
-  
+  def parents: Seq[RootZipper] = Stream.iterate(Option(this: RootZipper))(_.flatMap(_.parent)).takeWhile(_.isDefined).map(_.get)
+
   /** The root above the current zipper.
     */
   def root: RootZipper = parent.map(_.root).getOrElse(this)

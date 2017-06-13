@@ -59,10 +59,10 @@ final class replacement[ReplacementValue] extends Annotation with StaticAnnotati
   *
   * The TransformFunction should be defined something like this:
   * {{{
-  *   class Transform extends TransformFunction {
-  *     val onExpression: PartialFunction[ExpressionZ, Expression] = EmptyFunction
-  *     def apply(e: ExpressionZ) = transformWith[ExpressionZ, Expression](e)(this, onExpression)
-  *   }
+  *  class Transform extends TransformFunction {
+  *    val onExpression: PartialFunction[ExpressionZ, Expression] = EmptyFunction
+  *    def apply(e: ExpressionZ) = transformWith[ExpressionZ, Expression](e)(this, onExpression)
+  *  }
   * }}}
   */
 @compileTimeOnly("@transform must be applied to a class also annotated with @root, @branch, or @leaf")
