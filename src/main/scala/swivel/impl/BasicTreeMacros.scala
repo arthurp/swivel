@@ -15,7 +15,6 @@ package swivel.impl
 
 import scala.reflect.macros.whitebox.Context
 import scala.language.existentials
-import scala.reflect.internal.Flags
 
 object BasicTreeMacros {
   class CompileErrorReported() extends Exception
@@ -64,6 +63,81 @@ class BasicTreeMacros(val c: Context) {
         throw new CompileErrorReported()
     }
     (inCls, inObj)
+  }
+
+  def extractStandardCompanionDefs(defs: Seq[Tree]): (Option[ClassDef], Option[ModuleDef], Seq[Tree]) = {
+    var zCls: Option[ClassDef] = None
+    var zObj: Option[ModuleDef] = None
+    var rest: Seq[Tree] = Seq()
+    defs foreach {
+      case d @ q"$mods class ${ `zipperName` } extends ..${ supers } { ..${ defs } }" if zCls.isEmpty =>
+        zCls = Some(d.asInstanceOf[ClassDef])
+      case d @ q"$mods object ${ `zipperNameTerm` } extends ..${ supers } { ..${ defs } }" if zObj.isEmpty =>
+        zObj = Some(d.asInstanceOf[ModuleDef])
+      case d =>
+        rest :+= d
+    }
+    (zCls, zObj, rest)
+  }
+
+  val emptyClassResults = (Modifiers(), TypeName(""), Seq(), Seq())
+
+  def decomposeClassDef(d: Option[ClassDef]): Option[(Modifiers, TypeName, Seq[Tree], Seq[Tree])] = {
+    d.flatMap(decomposeClassDef)
+  }
+
+  def decomposeClassDef(d: ClassDef): Option[(Modifiers, TypeName, Seq[Tree], Seq[Tree])] = {
+    d match {
+      case q"$mods class ${ name: TypeName } extends ..${ supers: Seq[Tree] } { ..${ defs: Seq[Tree] } }" =>
+        Some((mods, name, supers, defs))
+      case _ =>
+        None
+    }
+  }
+  
+  val emptyModuleResults = (Modifiers(), TermName(""), Seq(), Seq())
+
+  def decomposeModuleDef(d: Option[ModuleDef]): Option[(Modifiers, TermName, Seq[Tree], Seq[Tree])] = {
+    d.flatMap(decomposeModuleDef)
+  }
+
+  def decomposeModuleDef(d: ModuleDef): Option[(Modifiers, TermName, Seq[Tree], Seq[Tree])] = {
+    d match {
+      case q"$mods object ${ name: TermName } extends ..${ supers: Seq[Tree] } { ..${ defs: Seq[Tree] } }" =>
+        Some((mods, name, supers, defs))
+      case _ =>
+        None
+    }
+  }
+  
+  def mergeSupers(s1: Seq[Tree], s2: Seq[Tree]) = {
+    // Drop 1 value since it will be AnyRef
+    s1 ++ s2.drop(1).filterNot(s => s1.contains(s))
+  }
+  
+  def mergeWithOption(d1: ModuleDef, d2o: Option[ModuleDef]) = {
+    (d1, d2o) match {
+      case (q"$mods1 object ${ name1: TermName } extends ..${ supers1: Seq[Tree] } { ..${ defs1: Seq[Tree] } }", 
+          Some(q"$mods2 object ${ name2: TermName } extends ..${ supers2: Seq[Tree] } { ..${ defs2: Seq[Tree] } }")) =>
+        require(name1 == name2)
+        val mods = Modifiers(mods1.flags | mods2.flags, mods1.privateWithin, mods1.annotations ++ mods2.annotations)
+        q"$mods object ${ name1 } extends ..${ mergeSupers(supers1, supers2) } { ..${ defs1 ++ defs2 } }"
+      case (_, None) =>
+        d1
+    }
+  }
+
+  def mergeWithOption(d1: ClassDef, d2o: Option[ClassDef]) = {
+    (d1, d2o) match {
+      case (q"$mods1 class ${ name1: TypeName }(..$args1) extends ..${ supers1: Seq[Tree] } { ..${ defs1: Seq[Tree] } }", 
+          Some(q"$mods2 class ${ name2: TypeName }(..$args2) extends ..${ supers2: Seq[Tree] } { ..${ defs2: Seq[Tree] } }")) =>
+        require(name1 == name2)
+        require(args1.isEmpty || args2.isEmpty)
+        val mods = Modifiers(mods1.flags | mods2.flags, mods1.privateWithin, mods1.annotations ++ mods2.annotations)
+        q"$mods class ${ name1 }(..${args1 ++ args2}) extends ..${ mergeSupers(supers1, supers2) } { ..${ defs1 ++ defs2 } }"
+      case (_, None) =>
+        d1
+    }
   }
 
   def extractSwivelDirectSuperClassName(supers: Seq[Tree]): TypeName = supers.headOption match {
@@ -145,6 +219,7 @@ class BasicTreeMacros(val c: Context) {
   }
 
   val zipperName = TypeName("Z")
+  val zipperNameTerm = TermName("Z")
   val zipperParentBase = TypeName("ZipperParent")
 
   val castName = TermName("swivel_cast")
@@ -176,7 +251,7 @@ class BasicTreeMacros(val c: Context) {
     }
   }
 
-  def buildCastMethods(name: TypeName): Seq[Tree] = {
+  def buildCastMethods(name: Tree): Seq[Tree] = {
     val v = c.freshName[TermName](TermName("v"))
     val v1 = c.freshName[TermName](TermName("v1"))
 
@@ -287,12 +362,8 @@ class BasicTreeMacros(val c: Context) {
           throw new CompileErrorReported()
       }
 
-      val (objMod, objSupers, objDefs) = inObj match {
-        case Some(q"$mods object ${ name } extends ..${ supers: Seq[Tree] } { ..${ defs: Seq[Tree] } }") =>
-          (mods, supers, defs)
-        case _ =>
-          (Modifiers(), Seq(), Seq())
-      }
+      val (objMod, _, objSupers, rawObjDefs) = decomposeModuleDef(inObj).getOrElse(emptyModuleResults)
+      val (inZCls, inZObj, objDefs) = extractStandardCompanionDefs(rawObjDefs)
 
       val cMods = cleanedMods(mods)
       def zipperRef = addZ(name)
@@ -345,9 +416,9 @@ class BasicTreeMacros(val c: Context) {
 
       val outObj = q"""
         $objMod object ${name.toTermName} extends ..$objSupers {
-          $zCls
+          ${mergeWithOption(zCls, inZCls)}
+          ${mergeWithOption(zObj, inZObj)}
           $zpCls
-          $zObj
           
           ..$objDefs
         }
@@ -375,12 +446,8 @@ class BasicTreeMacros(val c: Context) {
           throw new CompileErrorReported()
       }
 
-      val (objMod, objSupers, objDefs) = inObj match {
-        case Some(q"$mods object ${ name } extends ..${ supers: Seq[Tree] } { ..${ defs: Seq[Tree] } }") =>
-          (mods, supers, defs)
-        case _ =>
-          (Modifiers(), Seq(), Seq())
-      }
+      val (objMod, _, objSupers, rawObjDefs) = decomposeModuleDef(inObj).getOrElse(emptyModuleResults)
+      val (inZCls, inZObj, objDefs) = extractStandardCompanionDefs(rawObjDefs)
 
       val cMods = cleanedMods(mods)
       val directSuper = extractSwivelDirectSuperClassName(supers)
@@ -419,14 +486,14 @@ class BasicTreeMacros(val c: Context) {
 
       val zObj = q"""
         object ${zipperName.toTermName} {
-          ..${buildCastMethods(name)}
+          ..${buildCastMethods(Ident(name))}
         }"""
 
       val outObj = q"""
         $objMod object ${name.toTermName} extends ..$objSupers {
-          $zCls
+          ${mergeWithOption(zCls, inZCls)}
+          ${mergeWithOption(zObj, inZObj)}
           $zpCls
-          $zObj
           
           ..$objDefs
         }
@@ -453,12 +520,8 @@ class BasicTreeMacros(val c: Context) {
           throw new CompileErrorReported()
       }
 
-      val (objMod, objSupers, objDefs) = inObj match {
-        case Some(q"$mods object ${ name } extends ..${ supers: Seq[Tree] } { ..${ defs: Seq[Tree] } }") =>
-          (mods, supers, defs)
-        case _ =>
-          (Modifiers(), Seq(), Seq())
-      }
+      val (objMod, _, objSupers, rawObjDefs) = decomposeModuleDef(inObj).getOrElse(emptyModuleResults)
+      val (inZCls, inZObj, objDefs) = extractStandardCompanionDefs(rawObjDefs)
 
       def newValue(args: Seq[Tree]) = {
         q"new ${vName}(..$args)"
@@ -500,6 +563,13 @@ class BasicTreeMacros(val c: Context) {
         //def arg: DefTree = originalArg
 
         def accessorTypeZ: Tree
+        def accessorDefZMods: Modifiers = {
+          if(getFlag(originalArg.mods, Flag.OVERRIDE)) {
+            Modifiers(Flag.OVERRIDE, originalArg.mods.privateWithin, originalArg.mods.annotations)
+          } else {
+            Modifiers(NoFlags, originalArg.mods.privateWithin, originalArg.mods.annotations)
+          }
+        }
         def accessorExprZ: Tree
         def contributeToSubtreesZ(o: Tree): Tree
         def rawAccessorExprZ: Tree = q"$underlying.$name"
@@ -532,7 +602,7 @@ class BasicTreeMacros(val c: Context) {
 
         def accessorTypeZ: Tree = accessorType
         def accessorExprZ: Tree = rawAccessorExprZ
-        def accessorDefZ: DefTree = q"def $name: $accessorTypeZ = $accessorExprZ".originalArgPos()
+        def accessorDefZ: DefTree = q"$accessorDefZMods def $name: $accessorTypeZ = $accessorExprZ".originalArgPos()
 
         def elementType: Ident = Ident(TypeName("Nothing"))
 
@@ -613,7 +683,7 @@ class BasicTreeMacros(val c: Context) {
         def accessorTypeZ: Tree = addZ(elementType.name)
         def accessorDefZ: DefTree = {
           val zpConstrArgs = allArgHandlers.filterNot(_.name == name).map(_.rawAccessorExprZ)
-          q"""def $name: $accessorTypeZ = $rawAccessorExprZ.toZipper(Some(new $zipperParentRef(..$zpConstrArgs, $parent)))""".originalArgPos()
+          q"""$accessorDefZMods def $name: $accessorTypeZ = $rawAccessorExprZ.toZipper(Some(new $zipperParentRef(..$zpConstrArgs, $parent)))""".originalArgPos()
         }
 
         def contributeToSubtrees(o: Tree): Tree = q"$o :+ $accessorExpr".originalArgPos()
@@ -642,7 +712,7 @@ class BasicTreeMacros(val c: Context) {
             }
           })
           q"""
-            val $name: $accessorTypeZ = $rawAccessorExprZ.view.zipWithIndex.map({ p =>
+            $accessorDefZMods val $name: $accessorTypeZ = $rawAccessorExprZ.view.zipWithIndex.map({ p =>
               val f = p._1
               val i = p._2
               f.toZipper(Some(new $zipperParentRef(..$zpConstrArgs, i, $parent)))
@@ -681,7 +751,7 @@ class BasicTreeMacros(val c: Context) {
             }
           })
           q"""
-            val $name: $accessorTypeZ = $rawAccessorExprZ.map(_.view.zipWithIndex.map({ p =>
+            $accessorDefZMods val $name: $accessorTypeZ = $rawAccessorExprZ.map(_.view.zipWithIndex.map({ p =>
               val f = p._1
               val i = p._2
               f.toZipper(Some(new $zipperParentRef(..$zpConstrArgs, i, $parent)))
@@ -712,7 +782,7 @@ class BasicTreeMacros(val c: Context) {
         def accessorTypeZ: Tree = tq"$containerType[$elementTypeZ]"
         def accessorDefZ: DefTree = {
           val zpConstrArgs = allArgHandlers.filterNot(_.name == name).map(_.rawAccessorExprZ)
-          q"""def $name: $accessorTypeZ = $rawAccessorExprZ.map(_.toZipper(Some(new $zipperParentRef(..$zpConstrArgs, $parent))))""".originalArgPos()
+          q"""$accessorDefZMods def $name: $accessorTypeZ = $rawAccessorExprZ.map(_.toZipper(Some(new $zipperParentRef(..$zpConstrArgs, $parent))))""".originalArgPos()
         }
 
         def contributeToSubtrees(o: Tree): Tree = q"$o ++ $accessorExpr".originalArgPos()
@@ -741,7 +811,7 @@ class BasicTreeMacros(val c: Context) {
             }
           })
           q"""
-            val $name: $accessorTypeZ = $rawAccessorExprZ.map({ p =>
+            $accessorDefZMods val $name: $accessorTypeZ = $rawAccessorExprZ.map({ p =>
               val k = p._1
               val v = p._2
               (k, v.toZipper(Some(new $zipperParentRef(..$zpConstrArgs, k, $parent))))
@@ -843,22 +913,33 @@ class BasicTreeMacros(val c: Context) {
 
       val zTypes = allArgHandlers.map(_.accessorTypeZ)
       val zUnapplyValues = allArgHandlers.map(h => q"v.${h.name}")
-      val zObj = q"""
-        object ${zipperName.toTermName} {
+      val unapplyMethod = if (allArgHandlers.isEmpty) {
+        q"""
+          def unapply(v: $zipperRef): Boolean = { 
+            v != null
+          }
+        """
+      } else {
+        q"""
           def unapply(v: $zipperRef): Option[(..$zTypes)] = { 
             if (v == null)
               None
             else           
               Some((..$zUnapplyValues))
           }
-          ..${buildCastMethods(vName)}
+        """
+      }
+      val zObj = q"""
+        object ${zipperName.toTermName} {
+          $unapplyMethod
+          ..${buildCastMethods(Ident(vName))}
         }
         """
 
       val outObj = q"""
         $objMod object ${vName.toTermName} extends ..$objSupers {
-          $zCls
-          $zObj
+          ${mergeWithOption(zCls, inZCls)}
+          ${mergeWithOption(zObj, inZObj)}
           ..$zClsParents
           
           ..$objDefs

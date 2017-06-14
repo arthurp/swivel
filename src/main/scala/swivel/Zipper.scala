@@ -148,11 +148,22 @@ trait Zipper extends ZipperBase {
 /** Pattern matching object to extract the value from any Zipper in a pattern.
   */
 object Zipper {
-  def unapply(z: Zipper): Option[z.Value] =
+  def unapply(z: Zipper): Option[(z.Value, Option[z.RootZipper])] = {
     if (z == null)
       None
     else
-      Some(z.value)
+      Some((z.value, z.parent))
+  }
+}
+
+/** Some useful implicit conversions for Zippers.
+  *
+  * Import using {{{import ZipperImplicits._}}} to use.
+  */
+object ZipperImplicits {
+  import scala.language.implicitConversions
+
+  implicit def zipper2Value(z: Zipper): z.Value = z.value
 }
 
 /** '''For internal use only'''

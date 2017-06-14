@@ -43,6 +43,9 @@ object ArithSwivel {
   object Formula {
     println("test Formula")
     val x = 2
+    class Z {
+      def test = 3
+    }
   }
 
   @leaf @transform
@@ -57,11 +60,20 @@ object ArithSwivel {
   }
   @leaf @transform
   final case class Let(x: BoundVar, @subtree expr: Option[Seq[Formula]], @subtree body: Formula) extends Formula
-
+  object Let {
+    class Z {
+      override def test = 3
+    }
+  }
+  
   @branch
   sealed abstract class Argument extends Formula
   object Argument {
     println("test Argument")
+    
+    object Z {
+      def test = 3
+    }
   }
   @leaf @transform
   final case class Constant(n: Int) extends Argument {
@@ -145,7 +157,7 @@ object ArithSwivelTest {
 
   case class ReplaceVariable(o: BoundVar, n: Argument) extends Transform {
     override val onArgument: PartialFunction[Argument.Z, Argument] = {
-      case Zipper(`o`) => n
+      case Zipper(`o`, _) => n
     }
   }
 
