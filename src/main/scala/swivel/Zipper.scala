@@ -136,10 +136,17 @@ trait Zipper extends ZipperBase {
   def subtrees: Seq[RootZipper]
 
   override def toString(): String = value.toString() + swivel_parentString
-  override def hashCode(): Int = value.hashCode() + swivel_parent.hashCode() * 11
+
+  /** Compute the hashCode.
+    *
+    * The hash is computed only based on the value instead of using the parent.
+    * This improves performance (~5% in the Orctimizer), but if an application uses lots of identical values
+    * in different Zipper contexts this will produce a bad hash distribution.
+    */
+  override def hashCode(): Int = value.hashCode()
   override def equals(o: Any): Boolean = o match {
     case z: swivel.Zipper =>
-      z.value == value && z.parent == parent
+      z.value == value && z.swivel_parent == swivel_parent
     case _ =>
       false
   }
