@@ -43,6 +43,8 @@ trait SwivelValue {
   /** The subtrees (as defined by @subtree) of this value.
     */
   def subtrees: Seq[RootValue]
+  
+  def transferMetadata[T <: RootValue](e: T): T = e
 }
 
 /** The super trait of all Zippers and ZipperParents.
@@ -217,7 +219,7 @@ trait ZipperReplaceable extends Zipper {
 
   /** Replace the value at this zipper with a new one.
     *
-    * @throws IllegalArgumentException if the passed replacement doesn't match the parents required subtree time.
+    * @throws IllegalArgumentException if the passed replacement doesn't match the parents required subtree type.
     */
   @throws[IllegalArgumentException]
   def replace(a: ReplacementValue): a.Zipper = {

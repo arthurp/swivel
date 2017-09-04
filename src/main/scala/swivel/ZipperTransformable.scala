@@ -34,7 +34,7 @@ trait TransformFunction {
     * to be used from subclasses to implement easy to use apply methods. See @[[swivel.transform]].
     */
   def transformWith[Z <: ZipperTransformable, V >: Z#Value](z: Z)(tf: z.TranformFunction, f: PartialFunction[Z, V]): V = {
-    val v1 = z.transformChildren(tf)
+    val v1 = z.value.transferMetadata(z.transformChildren(tf))
     val z1: Z = v1.toZipper(z.swivel_parent).asInstanceOf[Z]
     if (f.isDefinedAt(z1)) {
       f(z1)

@@ -670,7 +670,7 @@ class BasicTreeMacros(val c: Context) {
               vValue
             } else {
               changed = true
-              modified2
+              vValue.transferMetadata(modified2)
             }
           }""".originalArgPos()
         def transComputation: Tree

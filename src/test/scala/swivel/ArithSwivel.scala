@@ -38,7 +38,15 @@ object ArithSwivel {
   @replacement[Formula]
   @transform[Transform]
   @root
-  sealed abstract class Formula
+  sealed abstract class Formula {
+    var metadata = 0
+    
+    override def transferMetadata[T <: Formula](e: T): T = {
+      println(s"Transferring $metadata from $this to $e")
+      e.metadata = metadata
+      e
+    }
+  }
 
   object Formula {
     println("test Formula")
@@ -234,7 +242,15 @@ object ArithSwivelTest {
       println(o.fields('a).replace(Constant(10)).root.value)
       println(o.subtrees)
 
-      println(ReplaceVariable(b, Constant(100))(z))
+      f.metadata = 42
+      
+      val r = ReplaceVariable(b, Constant(100))(z)
+      
+      println(r)
+      
+      println(f.metadata)
+      println(z.value.metadata)
+      println(r.metadata)
 
       println()
       PrintFunction(z)
